@@ -1,54 +1,55 @@
-// create web server
-var http = require('http');
-var fs = require('fs');
-var path = require('path');
-var url = require('url');
-var comments = [];
-
-var server = http.createServer(function (req, res) {
-    var urlObj = url.parse(req.url, true);
-    var pathName = urlObj.pathname;
-    if (pathName === '/') {
-        fs.readFile(path.join(__dirname, 'index.html'), function (err, data) {
-            if (err) {
-                console.log(err);
-                res.writeHead(500, {
-                    'Content-Type': 'text/html'
-                });
-                res.end('500 Internal Server Error');
-            }
-            res.writeHead(200, {
-                'Content-Type': 'text/html'
-            });
-            res.end(data);
-        });
-    } else if (pathName === '/comment') {
-        var comment = urlObj.query;
-        comment.dateTime = new Date();
-        comments.unshift(comment);
-        res.statusCode = 301;
-        res.setHeader('Location', '/');
-        res.end();
-    } else if (pathName === '/getComments') {
-        res.writeHead(200, {
-            'Content-Type': 'application/json'
-        });
-        res.end(JSON.stringify(comments));
-    } else {
-        fs.readFile(path.join(__dirname, pathName), function (err, data) {
-            if (err) {
-                console.log(err);
-                res.writeHead(404, {
-                    'Content-Type': 'text/html'
-                });
-                res.end('404 Not Found');
-            }
-            res.writeHead(200, {
-                'Content-Type': 'text/html'
-            });
-            res.end(data);
-        });
+// create web server 
+// express module
+const express = require('express');
+// create express object
+const app = express();
+// create server
+const http = require('http');
+const server = http.createServer(app);
+// create socket.io object
+const socketio = require('socket.io');
+const io = socketio(server);
+// create path object
+const path = require('path');
+// create fs object
+const fs = require('fs');
+// create comments array
+let comments = [];
+// create comments file
+const commentsFile = path.join(__dirname, 'comments.json');
+// read comments file
+fs.readFile(commentsFile, 'utf8', (err, data) => {
+    if (!err) {
+        comments = JSON.parse(data);
     }
 });
-
-server.listen(3000, '');
+// create socket.io connection
+io.on('connection', (socket) => {
+    // send comments array to client
+    socket.emit('comments', comments);
+    // receive comment from client
+    socket.on('comment', (comment) => {
+        // add comment to comments array
+        comments.push(comment);
+        // send comments array to client
+        io.emit('comments', comments);
+        // write comments array to comments file
+        fs.writeFile(commentsFile, JSON.stringify(comments), (err) => {
+            if (err) {
+                console.log(err);
+            }
+        });
+    });
+});
+// create route for comments.html
+app.get('/comments.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'comments.html'));
+});
+// create route for comments.json
+app.get('/comments.json', (req, res) => {
+    res.json(comments);
+});
+// listen on port 3000
+server.listen(3000, () => {
+    console.log('Server is running on http://localhost:3000');
+});
